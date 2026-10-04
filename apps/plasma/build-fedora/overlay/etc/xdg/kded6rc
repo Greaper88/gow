@@ -1,0 +1,4 @@
+[Module-device_automounter]
+autoload[$i]=false
+[Module-freespacenotifier]
+autoload=false

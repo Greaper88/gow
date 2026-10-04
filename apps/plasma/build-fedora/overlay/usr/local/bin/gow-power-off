@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Power Off has the same lifecycle as Log Out: finish this desktop session.
+# Never invoke systemctl, shutdown, or the Docker/Wolf management sockets.
+exec qdbus-qt6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout

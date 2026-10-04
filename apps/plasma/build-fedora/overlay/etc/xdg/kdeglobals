@@ -1,0 +1,27 @@
+[KDE Action Restrictions][$i]
+action/lock_screen=false
+action/start_new_session=false
+# This desktop can install apps from Flathub without administrative access.
+ghns=false
+
+[KDE Control Module Restrictions][$i]
+kcm_clock=false
+kcm_sddm=false
+kcm_users=false
+kcm_screenlocker=false
+kcm_powerdevilprofilesconfig=false
+kcm_powerdevilactivitiesconfig=false
+kcm_powerdevilglobalconfig=false
+kcm_energyinfo=false
+kcm_networkmanagement=false
+kcm_bluetooth=false
+kcm_firewall=false
+kcm_kded=false
+kcm_systemd=false
+kcm_regionandlang=false
+kcm_feedback=false
+device_automounter_kcm=false
+kcm_solid_actions=false
+
+[General]
+ColorScheme=BreezeDark

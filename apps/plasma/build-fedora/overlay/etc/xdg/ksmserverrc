@@ -1,0 +1,5 @@
+[General]
+loginMode=emptySession
+# The logout greeter assumes an active keyboard focus and can silently close
+# in nested/headless sessions. Applications still get normal save prompts.
+confirmLogout=false

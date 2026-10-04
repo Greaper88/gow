@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Install into the persistent user home. Registering the bundled signed repo
+# description needs no network, so an offline restart still opens the desktop.
+flatpak remote-add --user --if-not-exists flathub /opt/gow/flathub/flathub.flatpakrepo
+
+# dbus-run-session remains PID 1 and exits when the Plasma session ends.
+# KDE's normal logout path gives applications a chance to save their work.
+exec startplasma-wayland

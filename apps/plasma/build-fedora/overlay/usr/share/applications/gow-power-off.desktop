@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Power Off
+Comment=End this desktop session and stop its container
+Icon=system-shutdown
+Exec=gow-power-off
+Categories=System;
+OnlyShowIn=KDE;
+Keywords=shutdown;stop;container;logout;

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+width=${GAMESCOPE_WIDTH:-1920}
+height=${GAMESCOPE_HEIGHT:-1080}
+if [[ ! $width =~ ^[1-9][0-9]*$ || ! $height =~ ^[1-9][0-9]*$ ]]; then
+    echo 'GAMESCOPE_WIDTH and GAMESCOPE_HEIGHT must be positive integers.' >&2
+    exit 1
+fi
+# Use KDE's wrapper so it publishes the nested Wayland/X11 environment to
+# the session. Only KWin connects to Wolf's parent compositor.
+exec /usr/bin/kwin_wayland_wrapper --wayland-display "$WAYLAND_DISPLAY" --no-lockscreen \
+    --width "$width" --height "$height" "$@"
