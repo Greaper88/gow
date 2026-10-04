@@ -6,13 +6,16 @@ the desktop, Dolphin, Konsole, Kate and Ark; install additional applications
 using Discover or `flatpak install --user flathub APP_ID`. Image updates supply
 system packages. There is no sudo access or native package installation in Discover.
 
-## Build and use
+## Install and use
 
-From the GOW repository root:
+The published image is available for `linux/amd64`:
 
 ```sh
-docker build -t gow/plasma:local apps/plasma/build-fedora
+docker pull ghcr.io/greaper88/plasma:fedora
 ```
+
+`latest` and `fedora` identify the current published image. The tested initial
+release is also available as `ghcr.io/greaper88/plasma:sha-3ea87a2`.
 
 Add the entry from `assets/wolf.config.toml` to Wolf's application list. This is
 a separate desktop from XFCE, with its own `WolfPlasma` home directory. Wolf
@@ -23,6 +26,13 @@ Flatpak settings disable Wayland, and concurrent desktops can change settings.
 KWin runs nested in Wolf's Wayland compositor and supplies Xwayland for older
 applications. Its initial size comes from `GAMESCOPE_WIDTH` and
 `GAMESCOPE_HEIGHT`. GOW's NVIDIA setup is preserved; no GPU vendor is forced.
+
+To build locally instead, run this from the GOW repository root and change
+the sample runner's `image` to `gow/plasma:local`:
+
+```sh
+docker build -t gow/plasma:local apps/plasma/build-fedora
+```
 
 ## Session controls
 

@@ -4,7 +4,7 @@ title = 'Desktop (Plasma)'
 [apps.runner]
 type = 'docker'
 name = 'WolfPlasma'
-image = 'gow/plasma:local'
+image = 'ghcr.io/greaper88/plasma:fedora'
 env = ['GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia* /dev/fuse']
 devices = ['/dev/fuse:/dev/fuse']
 mounts = []
