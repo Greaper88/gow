@@ -1,0 +1,28 @@
+[[apps]]
+title = "Jellyfin Media Player"
+icon_png_path = "https://raw.githubusercontent.com/jellyfin/jellyfin-desktop/v1.12.0/resources/images/icon.png"
+start_virtual_compositor = true
+start_audio_server = true
+
+[apps.runner]
+type = "docker"
+name = "WolfJellyfin"
+image = "ghcr.io/greaper88/jellyfin:edge"
+mounts = []
+env = [
+    "RUN_SWAY=1",
+    "JELLYFIN_MODE=tv",
+    "GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*",
+]
+devices = []
+ports = []
+base_create_json = '''
+{
+  "HostConfig": {
+    "IpcMode": "host",
+    "Privileged": false,
+    "CapAdd": ["NET_RAW", "MKNOD", "NET_ADMIN"],
+    "DeviceCgroupRules": ["c 13:* rmw", "c 244:* rmw"]
+  }
+}
+'''
