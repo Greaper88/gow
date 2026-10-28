@@ -5,6 +5,12 @@ assert_has startplasma-wayland kwin_wayland plasmashell plasma-discover \
 assert_shared_ok /usr/bin/kwin_wayland
 assert_shared_ok /usr/bin/plasmashell
 assert_shared_ok /usr/bin/plasma-discover
+read -r shm_block_size shm_blocks < <(stat -f -c '%S %b' /dev/shm)
+if (( shm_block_size * shm_blocks >= 1073741824 )); then
+    ok 'desktop applications have at least 1 GiB of shared memory'
+else
+    bad 'shared memory is too small for Steam and other browser-based applications'
+fi
 if [[ -f /var/lib/flatpak/repo/config ]] && [[ -z $(flatpak remotes --system --columns=name) ]]; then
     ok 'Discover can enumerate an empty system installation without system remotes'
 else

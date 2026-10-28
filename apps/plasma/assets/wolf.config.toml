@@ -12,6 +12,7 @@ ports = []
 base_create_json = '''
 {
   "HostConfig": {
+    "ShmSize": 1073741824,
     "Privileged": false,
     "CapAdd": ["SYS_ADMIN", "DAC_READ_SEARCH"],
     "SecurityOpt": ["seccomp=unconfined", "apparmor=unconfined"],

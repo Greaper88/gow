@@ -38,7 +38,7 @@ RUN flatpak remote-add --system --if-not-exists flathub /opt/gow/flathub/flathub
 COPY overlay/ /
 RUN chmod 0755 /opt/gow/startup.sh /opt/gow/plasma-session \
         /usr/local/bin/kwin_wayland_wrapper /usr/local/bin/gow-power-off \
-        /etc/cont-init.d/40-plasma.sh \
+        /etc/cont-init.d/35-plasma-shm.sh /etc/cont-init.d/40-plasma.sh \
     && for entry in /etc/xdg/autostart/*powerdevil*.desktop \
         /etc/xdg/autostart/*polkit*.desktop /etc/xdg/autostart/*pam_kwallet*.desktop; do \
         if [ -f "$entry" ]; then printf '\nHidden=true\n' >> "$entry"; fi; \

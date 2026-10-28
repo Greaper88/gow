@@ -27,6 +27,37 @@ KWin runs nested in Wolf's Wayland compositor and supplies Xwayland for older
 applications. Its initial size comes from `GAMESCOPE_WIDTH` and
 `GAMESCOPE_HEIGHT`. GOW's NVIDIA setup is preserved; no GPU vendor is forced.
 
+The sample runner allows 1 GiB of private shared memory (`ShmSize`). The image
+also supplies a private 1 GiB `/dev/shm` at startup when the existing filesystem
+is smaller, so older runner entries work after updating the image. Larger
+allocations are preserved. This is a limit, not a reservation of physical RAM.
+Steam's Flatpak browser interface can exhaust Docker's default 64 MiB and
+repeatedly restart its login window even when all graphics libraries are present.
+The startup safeguard needs the runner's existing `SYS_ADMIN` capability and
+runs before desktop applications; it does not resize host or shared filesystems.
+
+### Sharing games with the Steam container
+
+Steam installed through Discover runs inside Flatpak. Its default game directory
+is `/home/retro/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps`.
+The `.steam/steam` path inside Flatpak resolves to that private client directory,
+so a bind at the desktop's `/home/retro/.steam/steam/steamapps` is not sufficient.
+
+To share games with the standalone Steam entry, bind the same host **steamapps
+directory** into the Flatpak game directory in the Plasma runner. For example,
+when `/srv/SteamLibrary` directly contains `common` and `appmanifest_*.acf`:
+
+```toml
+mounts = ['/srv/SteamLibrary:/home/retro/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps:rw']
+```
+
+If the host library has a `steamapps` subdirectory, use that subdirectory as the
+source instead. Flatpak automatically exposes its own application data, so no
+additional filesystem override is needed. Each profile keeps its own Steam
+client settings and sign-in while sharing game installations. Apply the mount
+before launching Steam; existing private games remain underneath the bind mount
+and need a separate migration if they should be shared too.
+
 To build locally instead, run this from the GOW repository root and change
 the sample runner's `image` to `gow/plasma:local`:
 
@@ -83,6 +114,7 @@ for the test; recent KWin requires DMA-BUF support from its parent compositor.
 ```sh
 docker build -t gow/plasma:test apps/plasma/tests
 docker run -d --name gow-plasma-test \
+  --shm-size=1g \
   --cap-add SYS_ADMIN --cap-add DAC_READ_SEARCH --device /dev/fuse \
   --device /dev/dri/renderD128 -e 'GOW_REQUIRED_DEVICES=/dev/dri/* /dev/fuse' \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
