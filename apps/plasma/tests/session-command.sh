@@ -8,7 +8,7 @@ pid=$(pgrep -u "$(id -u)" -x plasmashell | head -n 1)
 session_env=()
 while IFS= read -r -d '' entry; do
     case "$entry" in
-        HOME=*|USER=*|PATH=*|DBUS_SESSION_BUS_ADDRESS=*|DISPLAY=*|WAYLAND_DISPLAY=*|XAUTHORITY=*|XDG_*=*|KDE_*=*)
+        HOME=*|USER=*|PATH=*|DBUS_SESSION_BUS_ADDRESS=*|DISPLAY=*|WAYLAND_DISPLAY=*|XAUTHORITY=*|XDG_*=*|KDE_*=*|QT_*=*)
             session_env+=("$entry") ;;
     esac
 done < "/proc/$pid/environ"

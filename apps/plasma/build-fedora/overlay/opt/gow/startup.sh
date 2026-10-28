@@ -21,7 +21,8 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_DATA_DIRS="$XDG_DATA_HOME/flatpak/exports/share:/usr/local/share:/usr/share"
 export XDG_CONFIG_DIRS=/etc/xdg
-export QT_QPA_PLATFORM=wayland
+# Prefer native Wayland, but let Qt apps that only bundle xcb use Xwayland.
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
 export MOZ_ENABLE_WAYLAND=1
 export _JAVA_AWT_WM_NONREPARENTING=1
 # Wolf supplies the PulseAudio server; do not start another audio server.

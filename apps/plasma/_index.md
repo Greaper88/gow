@@ -27,6 +27,11 @@ KWin runs nested in Wolf's Wayland compositor and supplies Xwayland for older
 applications. Its initial size comes from `GAMESCOPE_WIDTH` and
 `GAMESCOPE_HEIGHT`. GOW's NVIDIA setup is preserved; no GPU vendor is forced.
 
+Qt applications prefer Wayland and automatically fall back to Xwayland when
+their bundle lacks the Wayland plugin. This lets Qt AppImages such as Vita3K
+launch directly from Dolphin without a custom launcher. The session defaults
+to `QT_QPA_PLATFORM=wayland;xcb`; an explicitly configured value is respected.
+
 The sample runner allows 1 GiB of private shared memory (`ShmSize`). The image
 also supplies a private 1 GiB `/dev/shm` at startup when the existing filesystem
 is smaller, so older runner entries work after updating the image. Larger
