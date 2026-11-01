@@ -41,6 +41,37 @@ repeatedly restart its login window even when all graphics libraries are present
 The startup safeguard needs the runner's existing `SYS_ADMIN` capability and
 runs before desktop applications; it does not resize host or shared filesystems.
 
+### AppImages in the application menu
+
+Bind the host's AppImage folder to `/home/retro/Applications` in the Plasma
+runner, for example:
+
+```toml
+mounts = ['/srv/AppImages:/home/retro/Applications:ro']
+```
+
+Executable `.AppImage` files in this folder and its non-hidden subdirectories
+appear automatically in Plasma's application menu. The watcher starts with
+Plasma and checks every five seconds, updating entries when files are added,
+replaced, renamed, removed, or lose executable permission. The extension is
+case-insensitive. Set executable permission on the host before using a read-only
+mount; discovery never moves, changes, or runs the mounted files.
+
+The embedded desktop entry supplies the name, categories (such as Games),
+description, terminal preference and application icon. Metadata is read directly
+from SquashFS and DwarFS AppImages, including internal relative symlinks. If
+metadata is missing, malformed or unsupported, the filename is used with a
+generic icon in Utilities. Launch commands are generated for the mounted file;
+embedded commands, desktop actions and file associations are not imported.
+The desktop's Wayland/Xwayland fallback applies to these launches too.
+
+Generated entries are stored as `~/.local/share/applications/gow-appimage-*.desktop`
+and icons under `~/.local/share/gow-appimages/icons`. Only this integration's
+entries are removed during cleanup; other launchers and Flatpak exports are
+preserved. No root privileges, network requests, FUSE mounts or AppImage execution
+are needed for discovery. DwarFS tooling is bundled from the pinned, checksum-verified
+upstream release; it is not an additional Discover installation source.
+
 ### Sharing games with the Steam container
 
 Steam installed through Discover runs inside Flatpak. Its default game directory
@@ -115,6 +146,12 @@ Structural checks use `tests/smoke-fedora.sh`. A separate test image adds
 Spectacle and QML tools for an isolated nested Wayland session. A second KWin
 instance provides the virtual parent display. Select a usable render node
 for the test; recent KWin requires DMA-BUF support from its parent compositor.
+
+AppImage integration regression checks run with `python3 tests/test-appimage-menu.py`
+inside the built image (mount this app directory as the working directory). They
+cover metadata, live file changes, cleanup, read-only source files, unusual names,
+and launching without shell interpretation. Real AppImage launch checks should
+also use the read-only mount above in an isolated session.
 
 ```sh
 docker build -t gow/plasma:test apps/plasma/tests

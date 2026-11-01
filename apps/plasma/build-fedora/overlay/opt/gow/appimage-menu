@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Maintain Plasma menu entries for executable AppImages in ~/Applications."""
+
+import argparse
+import configparser
+import fcntl
+import hashlib
+import io
+import os
+from pathlib import Path, PurePosixPath
+import posixpath
+import re
+import resource
+import stat
+import struct
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+PREFIX = "gow-appimage-"
+MARKER = "X-GOW-AppImage=true\n"
+INTERVAL = 5
+MAX_OUTPUT = 8 * 1024 * 1024
+MAIN_CATEGORIES = set("AudioVideo Audio Video Development Education Game Graphics "
+                      "Network Office Science Settings System Utility".split())
+
+
+def command_output(args):
+    """Bound archive-reader time and output, including malformed bundles."""
+    def limit_output():
+        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT, MAX_OUTPUT))
+
+    with tempfile.TemporaryFile() as output:
+        result = subprocess.run(args, stdout=output, stderr=subprocess.DEVNULL,
+                                timeout=15, preexec_fn=limit_output)
+        # 7-Zip returns 1 for the expected prepended AppImage runtime.
+        if result.returncode not in (0, 1) or output.tell() >= MAX_OUTPUT:
+            raise ValueError("unreadable or oversized AppImage metadata")
+        output.seek(0)
+        return output.read()
+
+
+def filesystem_kind(path):
+    """Find the appended filesystem from the ELF section table, never by exec."""
+    with path.open("rb") as image:
+        header = image.read(64)
+        if len(header) < 64 or header[:4] != b"\x7fELF" or header[8:11] != b"AI\x02":
+            raise ValueError("not a type-2 AppImage")
+        endian = {1: "<", 2: ">"}[header[5]]
+        if header[4] == 2:
+            table = struct.unpack_from(endian + "Q", header, 40)[0]
+            size, count = struct.unpack_from(endian + "HH", header, 58)
+            section_format, section_offset, minimum = "QQ", 24, 64
+        elif header[4] == 1:
+            table = struct.unpack_from(endian + "I", header, 32)[0]
+            size, count = struct.unpack_from(endian + "HH", header, 46)
+            section_format, section_offset, minimum = "II", 16, 40
+        else:
+            raise ValueError("unsupported ELF class")
+        end = table + size * count
+        file_size = os.fstat(image.fileno()).st_size
+        if not count or size < minimum or end > file_size:
+            raise ValueError("invalid ELF section table")
+        image.seek(table + size * (count - 1))
+        section = image.read(minimum)
+        offset, length = struct.unpack_from(endian + section_format, section, section_offset)
+        if offset + length > file_size:
+            raise ValueError("invalid ELF section extent")
+        image.seek(max(end, offset + length))
+        magic = image.read(6)
+    if magic.startswith(b"hsqs"):
+        return "squashfs"
+    if magic == b"DWARFS":
+        return "dwarfs"
+    raise ValueError("unsupported AppImage filesystem")
+
+
+class Archive:
+    def __init__(self, path):
+        self.path = str(path)
+        self.kind = filesystem_kind(path)
+
+    def entries(self, pattern):
+        """Return name -> (symlink target, file bytes); never extract to disk."""
+        if self.kind == "dwarfs":
+            data = command_output([
+                "/opt/gow/dwarfs-universal", "--tool=dwarfsextract", "-i", self.path,
+                "-f", "ustar", "--pattern", pattern, "-n", "1", "-s", "16m",
+                "--skip-devices", "--skip-specials", "--log-level", "error",
+            ])
+            with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                return {m.name.removeprefix("./"):
+                        (m.linkname, None) if m.issym() else (None, archive.extractfile(m).read())
+                        for m in archive if m.issym() or (m.isfile() and m.size < MAX_OUTPUT)}
+        listing = command_output([
+            "7z", "l", "-slt", "-tSquashFS", "--", self.path, pattern,
+        ]).decode("utf-8")
+        entries = {}
+        for block in listing.partition("----------\n")[2].split("\n\n"):
+            fields = dict(line.split(" = ", 1) for line in block.splitlines() if " = " in line)
+            name = fields.get("Path")
+            if not name or fields.get("Folder") == "+" or int(fields.get("Size", "0")) >= MAX_OUTPUT:
+                continue
+            data = command_output(["7z", "x", "-so", "-spd", "-tSquashFS", "--", self.path, name])
+            entries[name] = ((data.decode("utf-8"), None) if fields.get("Mode", "").startswith("l")
+                             else (None, data))
+        return entries
+
+    def read(self, name, seen=None):
+        name = posixpath.normpath(name)
+        seen = set() if seen is None else seen
+        if name.startswith(("/", "../")) or name in seen or len(seen) > 8:
+            raise ValueError("invalid metadata symlink")
+        seen.add(name)
+        # Escape wildcard syntax for the archive selection; only consume the
+        # exact requested member even if an extractor interprets it differently.
+        pattern = "".join("[" + c + "]" if c in "*?[" else c for c in name)
+        link, data = self.entries(pattern)[name]
+        if link is not None:
+            return self.read(posixpath.join(posixpath.dirname(name), link), seen)
+        return data
+
+
+def metadata(path):
+    archive = Archive(path)
+    names = sorted(n for n in archive.entries("*.desktop") if "/" not in n)
+    if not names:
+        names = sorted(archive.entries("usr/share/applications/*.desktop"))
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    parser.read_string(archive.read(names[0]).decode("utf-8"))
+    entry = parser["Desktop Entry"]
+    # Retain descriptive fields, never bundled Exec, actions, or host paths.
+    fields = {k: v for k, v in entry.items()
+              if re.fullmatch(r"(?:Name|GenericName|Comment|Keywords)(?:\[[\w@.-]+\])?|StartupWMClass", k)
+              and v and not any(c in v for c in "\n\r\x00")}
+    categories = [c for c in entry.get("Categories", "").split(";") if re.fullmatch(r"[A-Za-z0-9-]+", c)]
+    if not MAIN_CATEGORIES.intersection(categories):
+        categories.append("Utility")
+    fields["Categories"] = ";".join(categories) + ";"
+    fields["Terminal"] = "true" if entry.get("Terminal", "false").lower() == "true" else "false"
+    icon_name = PurePosixPath(entry.get("Icon", "")).name
+    for name in [icon_name, icon_name + ".png", icon_name + ".svg", ".DirIcon"]:
+        try:
+            data = archive.read(name)
+            if data.startswith(b"\x89PNG\r\n\x1a\n"):
+                return fields, ("png", data)
+            if b"<svg" in data[:4096]:
+                return fields, ("svg", data)
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError, tarfile.TarError):
+            continue
+    return fields, None
+
+
+def atomic_write(path, data):
+    if path.exists() and path.read_bytes() == data:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".gow-", delete=False) as out:
+        temporary = Path(out.name)
+        try:
+            out.write(data)
+            out.flush()
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return True
+
+
+def escape_value(value):
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+
+class Menu:
+    def __init__(self, home, data_home):
+        self.source = home / "Applications"
+        self.applications = data_home / "applications"
+        self.icons = data_home / "gow-appimages" / "icons"
+        self.cache = {}
+
+    def sync(self):
+        def scan_error(error):
+            raise error  # Do not remove entries on a partial/unreadable scan.
+
+        found = {}
+        try:
+            self.source.stat()
+            walk = os.walk(self.source, onerror=scan_error)
+        except FileNotFoundError:
+            walk = []
+        for directory, dirs, files in walk:
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for filename in files:
+                if filename.startswith(".") or not filename.lower().endswith(".appimage"):
+                    continue
+                path = Path(directory) / filename
+                try:
+                    info = path.stat()
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISREG(info.st_mode) and os.access(path, os.R_OK | os.X_OK):
+                    found[path] = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        changed = False
+        expected = set()
+        for path, signature in found.items():
+            key = PREFIX + hashlib.sha256(os.fsencode(path)).hexdigest()
+            expected.add(key)
+            cached = self.cache.get(path)
+            if cached is None or cached[0] != signature:
+                fields = {"Name": escape_value(path.stem), "Categories": "Utility;", "Terminal": "false"}
+                icon = None
+                try:
+                    details, icon = metadata(path)
+                    fields.update(details)
+                except (OSError, ValueError, KeyError, IndexError, struct.error,
+                        configparser.Error, subprocess.SubprocessError, tarfile.TarError) as error:
+                    print(f"[appimages] Using basic menu entry for {path.name!r}: {error}", file=sys.stderr)
+                fields.setdefault("Icon", "application-x-executable")
+                for extension in ("png", "svg"):
+                    icon_path = self.icons / f"{key}.{extension}"
+                    if icon and icon[0] == extension:
+                        changed |= atomic_write(icon_path, icon[1])
+                        fields["Icon"] = escape_value(str(icon_path))
+                    elif icon_path.exists():
+                        icon_path.unlink()
+                        changed = True
+                # Hex encoding avoids every Desktop Entry Exec quoting/field-code
+                # ambiguity, including literal percent signs and Unicode paths.
+                fields["Exec"] = "/opt/gow/appimage-menu --launch " + os.fsencode(path).hex()
+                body = "[Desktop Entry]\nType=Application\n" + MARKER
+                body += "".join(f"{k}={v}\n" for k, v in fields.items())
+                self.cache[path] = (signature, body.encode("utf-8"))
+            changed |= atomic_write(self.applications / f"{key}.desktop", self.cache[path][1])
+        for entry in self.applications.glob(f"{PREFIX}*.desktop"):
+            if entry.stem not in expected and MARKER in entry.read_text(errors="replace"):
+                entry.unlink()
+                changed = True
+                for extension in ("png", "svg"):
+                    (self.icons / f"{entry.stem}.{extension}").unlink(missing_ok=True)
+        self.cache = {p: v for p, v in self.cache.items() if p in found}
+        return changed
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--once", action="store_true")
+    mode.add_argument("--launch", metavar="HEX_PATH")
+    args = parser.parse_args()
+    if args.launch:
+        path = os.fsdecode(bytes.fromhex(args.launch))
+        os.execv(path, [path])
+    home = Path.home()
+    menu = Menu(home, Path(os.environ.get("XDG_DATA_HOME", home / ".local/share")))
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", home / ".cache"))
+    runtime.mkdir(parents=True, exist_ok=True)
+    with (runtime / "gow-appimage-menu.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        menu.source.mkdir(parents=True, exist_ok=True)
+        refresh = False
+        while True:
+            try:
+                refresh |= menu.sync()
+                if refresh:
+                    subprocess.run(["kbuildsycoca6"], check=True, timeout=30,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    refresh = False
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"[appimages] Menu refresh failed: {error}", file=sys.stderr)
+                if args.once:
+                    return 1
+            if args.once:
+                return 0
+            time.sleep(INTERVAL)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

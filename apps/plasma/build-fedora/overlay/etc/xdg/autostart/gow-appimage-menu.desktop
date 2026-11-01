@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AppImage Menu Integration
+Exec=/opt/gow/appimage-menu
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false

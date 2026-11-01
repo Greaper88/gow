@@ -2,6 +2,13 @@
 source /smoke-common/lib.sh
 assert_has startplasma-wayland kwin_wayland plasmashell plasma-discover \
     dolphin konsole flatpak qdbus-qt6 gow-power-off
+assert_has python3 7z kbuildsycoca6
+if [[ -x /opt/gow/appimage-menu && -x /opt/gow/dwarfs-universal ]] \
+    && desktop-file-validate /etc/xdg/autostart/gow-appimage-menu.desktop; then
+    ok 'automatic AppImage menu discovery is installed'
+else
+    bad 'AppImage menu integration is missing or invalid'
+fi
 assert_shared_ok /usr/bin/kwin_wayland
 assert_shared_ok /usr/bin/plasmashell
 assert_shared_ok /usr/bin/plasma-discover
